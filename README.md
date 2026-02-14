@@ -70,6 +70,14 @@ gh workflow run "Publish Docker Container" \
   -f release_tag=v1.0.1
 ```
 
+DistilBERT image trigger:
+
+```bash
+gh workflow run "Publish DistilBERT Docker Container" \
+  --repo anubhavkhajuria/SARADA \
+  -f release_tag=v1.0.1
+```
+
 Pull and run:
 
 ```bash
