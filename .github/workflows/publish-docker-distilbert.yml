@@ -7,6 +7,11 @@ on:
         description: Base SARADA image tag from GHCR
         required: false
         default: latest
+  workflow_run:
+    workflows:
+      - Publish Docker Container
+    types:
+      - completed
   push:
     tags:
       - "v*"
@@ -17,6 +22,7 @@ permissions:
 
 jobs:
   build-test-push:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/sarada
