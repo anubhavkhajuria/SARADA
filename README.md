@@ -1,0 +1,195 @@
+# SARADA: Software Architecture for RISCV Driven AI Workloads
+
+SARADA is distributed as a runtime Docker image for using the RICE compiler stack without exposing compiler source code in this repository.
+
+This repository contains runtime usage files only.
+
+## What You Get
+
+- Prebuilt Docker runtime image with:
+  - LLVM/MLIR tools
+  - torch-mlir
+  - RICE pass plugin
+  - `torch_rice` runtime package
+  - RISC-V cross compilation and QEMU support
+- Docker commands to run lowering and validation workflows
+
+## Runtime Image Distribution
+
+Release asset name:
+
+- `sarada-runtime-linux-arm64.tar.gz`
+
+## Linux and macOS Setup
+
+1. Download runtime image tar from Releases
+
+```bash
+curl -L -o sarada-runtime-linux-arm64.tar.gz \
+  https://github.com/anubhavkhajuria/SARADA-Software-Architecture-for-RISCV-Driven-AI-Workloads/releases/download/v1.0.0/sarada-runtime-linux-arm64.tar.gz
+```
+
+2. Load image into Docker
+
+```bash
+gunzip -c sarada-runtime-linux-arm64.tar.gz | docker load
+```
+
+3. Run interactive shell
+
+```bash
+docker run --rm -it sarada-runtime:latest bash
+```
+
+Notes:
+
+- Apple Silicon macOS and ARM Linux run this image natively.
+- Intel macOS/Linux can run with emulation:
+
+```bash
+docker run --rm -it --platform linux/arm64 sarada-runtime:latest bash
+```
+
+## Verify RICE Passes Are Available
+
+```bash
+docker run --rm sarada-runtime:latest \
+  bash -lc 'torch-mlir-opt --help | grep -E "convert-torch-to-rice|convert-rice-to-linalg"'
+```
+
+## Usage Examples
+
+### 1) Matmul lowering with vectorization
+
+```bash
+docker run --rm -it sarada-runtime:latest python - <<'PY'
+import torch
+from torch_rice import RICERISCVBackend
+
+class M(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.w = torch.nn.Parameter(torch.randn(32, 24))
+    def forward(self, x):
+        return torch.matmul(x, self.w)
+
+m = M().eval()
+x = torch.randn(16, 32)
+
+for mode in ["aggressive", "none"]:
+    b = RICERISCVBackend(
+        use_rice=True,
+        execution_mode="riscv",
+        vectorization_mode=mode,
+        enable_linalg_fusion=True,
+    )
+    c = b.compile(m, x, func_name=f"matmul_{mode}")
+    asm = c.get_riscv_assembly() or ""
+    print(mode, "asm_path=", c._asm_path, "has_vsetvli=", "vsetvli" in asm)
+PY
+```
+
+### 2) Conv2D lowering with and without vectorization
+
+```bash
+docker run --rm -it sarada-runtime:latest python - <<'PY'
+import torch
+from torch_rice import RICERISCVBackend
+
+m = torch.nn.Sequential(
+    torch.nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1),
+    torch.nn.GELU(),
+).eval()
+
+x = torch.randn(1, 3, 32, 32)
+
+for mode in ["aggressive", "none"]:
+    b = RICERISCVBackend(use_rice=True, execution_mode="riscv", vectorization_mode=mode, enable_linalg_fusion=True)
+    c = b.compile(m, x, func_name=f"conv2d_{mode}")
+    asm = c.get_riscv_assembly() or ""
+    print(mode, "asm_path=", c._asm_path, "has_vsetvli=", "vsetvli" in asm)
+PY
+```
+
+### 3) 4D batched matmul with and without vectorization
+
+```bash
+docker run --rm -it sarada-runtime:latest python - <<'PY'
+import torch
+from torch_rice import RICERISCVBackend
+
+class M(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.w = torch.nn.Parameter(torch.randn(1, 4, 8, 16))
+    def forward(self, x):
+        return torch.matmul(x, self.w)
+
+m = M().eval()
+x = torch.randn(1, 4, 16, 8)
+
+for mode in ["aggressive", "none"]:
+    b = RICERISCVBackend(use_rice=True, execution_mode="riscv", vectorization_mode=mode, enable_linalg_fusion=True)
+    c = b.compile(m, x, func_name=f"matmul4d_{mode}")
+    asm = c.get_riscv_assembly() or ""
+    print(mode, "asm_path=", c._asm_path, "has_vsetvli=", "vsetvli" in asm)
+PY
+```
+
+### 4) Transformer operators with and without fusion, and with and without vectorization
+
+```bash
+docker run --rm -it sarada-runtime:latest python - <<'PY'
+import torch
+import torch.nn as nn
+from torch_rice import RICERISCVBackend
+
+class TinyTransformerOps(nn.Module):
+    def __init__(self, d_model=32, nhead=4):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(d_model, nhead, dropout=0.0, batch_first=True)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.ffn = nn.Sequential(nn.Linear(d_model, 64), nn.GELU(), nn.Linear(64, d_model))
+        self.norm2 = nn.LayerNorm(d_model)
+    def forward(self, x):
+        attn_out, _ = self.attn(x, x, x, need_weights=False)
+        x = self.norm1(x + attn_out)
+        x = self.norm2(x + self.ffn(x))
+        return x
+
+m = TinyTransformerOps().eval()
+x = torch.randn(1, 16, 32)
+
+for fusion in [False, True]:
+    for mode in ["aggressive", "none"]:
+        b = RICERISCVBackend(
+            use_rice=True,
+            execution_mode="riscv",
+            vectorization_mode=mode,
+            enable_linalg_fusion=fusion,
+            require_linalg_fusion=False,
+        )
+        c = b.compile(m, x, func_name=f"xfm_fusion_{fusion}_{mode}")
+        asm = c.get_riscv_assembly() or ""
+        report = getattr(c, "_lowering_report", {}) or {}
+        print(
+            "fusion=", fusion,
+            "mode=", mode,
+            "asm_path=", c._asm_path,
+            "has_vsetvli=", "vsetvli" in asm,
+            "linalg_fusion_applied=", report.get("linalg_fusion_applied", False),
+        )
+PY
+```
+
+## Docker Compose Helper
+
+You can use `docker-compose.yml` from this repo:
+
+```bash
+docker compose run --rm sarada
+```
+
+## Intellectual Property Notice
+
+This repository intentionally does not publish compiler source code. It is runtime-only distribution material for executing and evaluating SARADA/RICE workflows.

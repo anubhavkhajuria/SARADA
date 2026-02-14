@@ -1,0 +1,8 @@
+services:
+  sarada:
+    image: sarada-runtime:latest
+    container_name: sarada-runtime
+    stdin_open: true
+    tty: true
+    working_dir: /opt/sarada
+    command: ["bash"]
