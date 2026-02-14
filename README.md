@@ -27,6 +27,11 @@ Release asset name:
 ```bash
 curl -L -o sarada-runtime-linux-arm64.tar.gz \
   https://github.com/anubhavkhajuria/SARADA-Runtime/releases/download/v1.0.0/sarada-runtime-linux-arm64.tar.gz
+
+curl -L -o sarada-runtime-linux-arm64.tar.gz.sha256 \
+  https://github.com/anubhavkhajuria/SARADA-Runtime/releases/download/v1.0.0/sarada-runtime-linux-arm64.tar.gz.sha256
+
+shasum -a 256 -c sarada-runtime-linux-arm64.tar.gz.sha256
 ```
 
 2. Load image into Docker
