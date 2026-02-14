@@ -1,0 +1,75 @@
+name: Publish DistilBERT Docker Container
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    env:
+      BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/sarada:latest
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sarada-distilbert
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup QEMU for arm64 smoke tests
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base image
+        run: |
+          set -euo pipefail
+          docker pull "${BASE_IMAGE}"
+
+      - name: Build image
+        run: |
+          set -euo pipefail
+          docker build --platform linux/arm64 \
+            --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+            -f Dockerfile.distilbert \
+            -t sarada-distilbert:ci .
+
+      - name: Smoke test image
+        run: |
+          set -euo pipefail
+          docker run --rm --platform linux/arm64 sarada-distilbert:ci \
+            python3 - <<'PY'
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+name = "distilbert-base-uncased-finetuned-sst-2-english"
+tokenizer = AutoTokenizer.from_pretrained(name)
+model = AutoModelForSequenceClassification.from_pretrained(name).eval()
+enc = tokenizer("This is not a good pizza, instead this is the best", return_tensors="pt")
+with torch.no_grad():
+    logits = model(**enc).logits
+print(int(logits.argmax(-1).item()))
+PY
+
+      - name: Push image
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker tag sarada-distilbert:ci "${IMAGE_NAME}:latest"
+          docker tag sarada-distilbert:ci "${IMAGE_NAME}:${SHORT_SHA}"
+          docker push "${IMAGE_NAME}:latest"
+          docker push "${IMAGE_NAME}:${SHORT_SHA}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            docker tag sarada-distilbert:ci "${IMAGE_NAME}:${GITHUB_REF_NAME}"
+            docker push "${IMAGE_NAME}:${GITHUB_REF_NAME}"
+          fi

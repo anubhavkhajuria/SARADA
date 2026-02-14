@@ -58,6 +58,10 @@ This repository includes `.github/workflows/publish-docker.yml` to build, test, 
 
 - `ghcr.io/anubhavkhajuria/sarada:latest`
 
+This repository also includes `.github/workflows/publish-docker-distilbert.yml` to build, test, and push the DistilBERT runtime image:
+
+- `ghcr.io/anubhavkhajuria/sarada-distilbert:latest`
+
 Manual trigger:
 
 ```bash
@@ -71,6 +75,13 @@ Pull and run:
 ```bash
 docker pull ghcr.io/anubhavkhajuria/sarada:latest
 docker run --rm -it --platform linux/arm64 ghcr.io/anubhavkhajuria/sarada:latest bash
+```
+
+For DistilBERT sentiment runtime:
+
+```bash
+docker pull ghcr.io/anubhavkhajuria/sarada-distilbert:latest
+docker run --rm -it --platform linux/arm64 ghcr.io/anubhavkhajuria/sarada-distilbert:latest bash
 ```
 
 ## Linux and macOS Setup
@@ -116,6 +127,24 @@ docker run --rm sarada:latest \
 ```
 
 ## Usage Examples
+
+### DistilBERT sentiment executable
+
+Run the included executable:
+
+```bash
+chmod +x distilbert_qemu/distilbert_sentiment_executable
+./distilbert_qemu/distilbert_sentiment_executable "This is not a good pizza, instead this is the best"
+```
+
+This uses `ghcr.io/anubhavkhajuria/sarada-distilbert:latest` by default.
+
+To override image:
+
+```bash
+SARADA_DISTILBERT_IMAGE=sarada-distilbert:latest \
+./distilbert_qemu/distilbert_sentiment_executable "I do not hate this movie"
+```
 
 ### 1) Matmul lowering with vectorization
 

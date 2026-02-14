@@ -1,0 +1,11 @@
+ARG BASE_IMAGE=ghcr.io/anubhavkhajuria/sarada:latest
+FROM ${BASE_IMAGE}
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN python3 -m pip install --upgrade pip \
+ && python3 -m pip install transformers sentencepiece
+
+CMD ["bash"]

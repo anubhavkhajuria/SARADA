@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 \"text\""
+  exit 1
+fi
+
+prompt="$*"
+image="${SARADA_DISTILBERT_IMAGE:-ghcr.io/anubhavkhajuria/sarada-distilbert:latest}"
+
+docker run --rm -i --pull=missing "$image" python3 - "$prompt" <<'PY'
+import sys
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+text = sys.argv[1]
+model_name = 'distilbert-base-uncased-finetuned-sst-2-english'
+
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name).eval()
+
+with torch.no_grad():
+    enc = tokenizer(text, return_tensors='pt', truncation=True, max_length=256)
+    logits = model(**enc).logits
+
+pred = int(torch.argmax(logits, dim=-1).item())
+print('POSITIVE' if pred == 1 else 'NEGATIVE')
+PY
